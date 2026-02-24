@@ -154,7 +154,7 @@
     </div>
 
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbyH54cqdQVDDrbLJO7xWG_O7eEMO0dzG8AbpsfUNdTOdTAnDeQC2UY7-N1nzi4t9jV2YA/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbxoXHjcHyq-RC9AiuG-fRk1a9CxkTirvpZU0LqL2v3ZyhC_Ofs_bizvCZveyOWJBZ9V/exec";
         const LIFF_ID = "2009216134-x9TsRzm8";
 
         let currentUserId = null;
@@ -206,7 +206,6 @@
             try {
                 await fetch(GAS_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
                     headers: {
                         'Content-Type': 'text/plain'
                     },
