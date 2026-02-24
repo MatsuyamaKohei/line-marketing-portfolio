@@ -76,7 +76,7 @@
     </form>
 
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbyeKMsT28UBmqN28gY2GJNuRh4cBFbbzitKOj4LSsdh_rTHeLHL_PZOGXwGvc4aLGTmNw/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbyH54cqdQVDDrbLJO7xWG_O7eEMO0dzG8AbpsfUNdTOdTAnDeQC2UY7-N1nzi4t9jV2YA/exec";
         const LIFF_ID = "2009216134-x9TsRzm8";
 
         let currentUserId = null;
@@ -104,13 +104,14 @@
             try {
                 await fetch(GAS_URL, {
                     method: 'POST',
+                    mode: 'no-cors',
                     headers: {
                         'Content-Type': 'text/plain'
                     },
                     body: JSON.stringify(postData)
                 });
             } catch (error) {
-                console.error("Fetch error (CORS is often expected but data is sent):", error);
+                console.error("Fetch error:", error);
             }
 
             alert('予約が完了しました！');
