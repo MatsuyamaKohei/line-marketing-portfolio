@@ -1,0 +1,95 @@
+/**
+ * スクリプト名: 美容室予約フォーム スプレッドシート転記システム
+ * 概要: LIFFフォームからのPOSTを受け取り、予約内容をスプレッドシートに記録する
+ *
+ * 事前準備:
+ * 1. 本スクリプトを「デプロイ」→「新しいデプロイ」→「ウェブアプリ」として公開
+ * 2. アクセスを「全員」に設定
+ * 3. 公開したURLをindex.htmlのGAS_URLに貼り付け
+ */
+
+// ==========================================
+// 設定値（ここを変更してください）
+// ==========================================
+const CONFIG = {
+  SHEET_NAME: '予約台帳', // 情報を蓄積するシート名
+};
+
+/**
+ * LIFFフォームからのPOSTを受け取るメイン関数
+ * 受信データ形式: { userId, userName, reservationDate, menu }
+ */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const { userId, userName, reservationDate, menu } = data;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+
+    // シートが存在しない場合は作成してヘッダーを追加
+    if (!sheet) {
+      sheet = ss.insertSheet(CONFIG.SHEET_NAME);
+      sheet.appendRow(['受信日時', 'ユーザーID', '名前', '予約日時', 'メニュー']);
+    }
+
+    // スプレッドシートに書き込み
+    sheet.appendRow([
+      Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss'),
+      userId,
+      userName,
+      reservationDate,
+      menu
+    ]);
+
+    console.log('スプレッドシートへの転記が完了しました。');
+    return ContentService
+      .createTextOutput(JSON.stringify({ result: 'ok' }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    console.error('エラー発生: ' + err.stack);
+    return ContentService
+      .createTextOutput(JSON.stringify({ result: 'error', message: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * LIFFフォームからのGETを受け取る関数
+ * クエリパラメータ: ?userId=xxx
+ * 戻り値: { oldName: "前回の名前" } または { oldName: null }
+ */
+function doGet(e) {
+  try {
+    const userId = e.parameter.userId;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+
+    if (!sheet || !userId) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ oldName: null }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ユーザーIDが一致する行を下から検索し、最新の名前を返す
+    const data = sheet.getDataRange().getValues();
+    let oldName = null;
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][1] === userId) {
+        oldName = data[i][2]; // 「名前」列
+        break;
+      }
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ oldName: oldName }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    console.error('エラー発生: ' + err.stack);
+    return ContentService
+      .createTextOutput(JSON.stringify({ oldName: null }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
