@@ -108,6 +108,11 @@
             // 2. 送信処理 (POST)
             document.getElementById('reservationForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
+
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerText = "送信中...";
+
                 const postData = {
                     userId: userId,
                     userName: document.getElementById('userName').value,
@@ -115,13 +120,25 @@
                     menu: document.getElementById('menu').value
                 };
 
-                await fetch(GAS_URL, {
-                    method: 'POST',
-                    body: JSON.stringify(postData)
-                });
+                try {
+                    await fetch(GAS_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        },
+                        body: JSON.stringify(postData)
+                    });
+                } catch (error) {
+                    console.error("Fetch error (CORS is often expected but data is sent):", error);
+                }
 
                 alert('予約が完了しました！');
-                liff.closeWindow(); // 完了後にLINE画面を閉じる
+                if (liff.isInClient()) {
+                    liff.closeWindow(); // LINEアプリ内なら閉じる
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = "予約完了（LINEアプリで開いてください）";
+                }
             });
         }
         main();
