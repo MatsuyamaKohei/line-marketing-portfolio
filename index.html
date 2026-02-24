@@ -48,6 +48,65 @@
             font-size: 0.9em;
             margin-bottom: 10px;
         }
+
+        /* 確認モーダル */
+        #confirmModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #confirmModal.active {
+            display: flex;
+        }
+
+        .modal-box {
+            background: #fff;
+            border-radius: 10px;
+            padding: 24px;
+            width: 88%;
+            max-width: 360px;
+        }
+
+        .modal-box h3 {
+            margin: 0 0 16px;
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+        .modal-box dl {
+            margin: 0 0 20px;
+        }
+
+        .modal-box dt {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 10px;
+        }
+
+        .modal-box dd {
+            margin: 2px 0 0;
+            font-weight: bold;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            font-size: 15px;
+        }
+
+        #cancelBtn {
+            background: #ccc;
+        }
     </style>
 </head>
 
@@ -75,14 +134,42 @@
         <button type="submit">予約を確定する</button>
     </form>
 
+    <!-- 確認モーダル -->
+    <div id="confirmModal">
+        <div class="modal-box">
+            <h3>予約内容の確認</h3>
+            <dl>
+                <dt>お名前</dt>
+                <dd id="confirmName"></dd>
+                <dt>ご希望日時</dt>
+                <dd id="confirmDate"></dd>
+                <dt>メニュー</dt>
+                <dd id="confirmMenu"></dd>
+            </dl>
+            <div class="modal-buttons">
+                <button id="cancelBtn" type="button">戻る</button>
+                <button id="confirmBtn" type="button">この内容で予約する</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const GAS_URL = "https://script.google.com/macros/s/AKfycbyH54cqdQVDDrbLJO7xWG_O7eEMO0dzG8AbpsfUNdTOdTAnDeQC2UY7-N1nzi4t9jV2YA/exec";
         const LIFF_ID = "2009216134-x9TsRzm8";
 
         let currentUserId = null;
 
-        // 送信処理は必ず先に登録しておく
-        document.getElementById('reservationForm').addEventListener('submit', async (e) => {
+        const modal = document.getElementById('confirmModal');
+
+        // 日時を読みやすい形式に変換
+        function formatDate(value) {
+            if (!value) return "";
+            const d = new Date(value);
+            return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+
+        // submitボタンで確認モーダルを表示
+        document.getElementById('reservationForm').addEventListener('submit', (e) => {
             e.preventDefault();
 
             if (!currentUserId) {
@@ -90,7 +177,22 @@
                 return;
             }
 
-            const submitBtn = e.target.querySelector('button[type="submit"]');
+            document.getElementById('confirmName').innerText = document.getElementById('userName').value;
+            document.getElementById('confirmDate').innerText = formatDate(document.getElementById('reservationDate').value);
+            document.getElementById('confirmMenu').innerText = document.getElementById('menu').value;
+            modal.classList.add('active');
+        });
+
+        // 戻るボタン
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            modal.classList.remove('active');
+        });
+
+        // 確定ボタン（実際の送信処理）
+        document.getElementById('confirmBtn').addEventListener('click', async () => {
+            modal.classList.remove('active');
+
+            const submitBtn = document.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
             submitBtn.innerText = "送信中...";
 
