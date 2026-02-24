@@ -79,67 +79,84 @@
         const GAS_URL = "https://script.google.com/macros/s/AKfycbyeKMsT28UBmqN28gY2GJNuRh4cBFbbzitKOj4LSsdh_rTHeLHL_PZOGXwGvc4aLGTmNw/exec";
         const LIFF_ID = "2009216134-x9TsRzm8";
 
+        let currentUserId = null;
+
+        // 送信処理は必ず先に登録しておく
+        document.getElementById('reservationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!currentUserId) {
+                alert('LINEログインが完了していません。ページを再読み込みしてください。');
+                return;
+            }
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerText = "送信中...";
+
+            const postData = {
+                userId: currentUserId,
+                userName: document.getElementById('userName').value,
+                reservationDate: document.getElementById('reservationDate').value,
+                menu: document.getElementById('menu').value
+            };
+
+            try {
+                await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: JSON.stringify(postData)
+                });
+            } catch (error) {
+                console.error("Fetch error (CORS is often expected but data is sent):", error);
+            }
+
+            alert('予約が完了しました！');
+            if (liff.isInClient()) {
+                liff.closeWindow();
+            } else {
+                submitBtn.disabled = false;
+                submitBtn.innerText = "予約完了（LINEアプリで開いてください）";
+            }
+        });
+
         async function main() {
-            await liff.init({ liffId: LIFF_ID });
+            try {
+                await liff.init({ liffId: LIFF_ID });
+            } catch (e) {
+                console.error("LIFF init error:", e);
+                document.getElementById('loading').innerText = "初期化に失敗しました。ページを再読み込みしてください。";
+                return;
+            }
 
             if (!liff.isLoggedIn()) {
                 liff.login();
                 return;
             }
 
-            const profile = await liff.getProfile();
-            const userId = profile.userId;
-            const defaultName = profile.displayName;
-
-            // 1. GASから前回値を読み込む (GET)
-            document.getElementById('loading').innerText = "前回の情報を確認中...";
             try {
-                const response = await fetch(`${GAS_URL}?userId=${userId}`);
-                const data = await response.json();
+                const profile = await liff.getProfile();
+                currentUserId = profile.userId;
+                const defaultName = profile.displayName;
 
-                // 前回の名前があればそれを、なければLINEの登録名を表示
-                document.getElementById('userName').value = data.oldName || defaultName;
-                document.getElementById('loading').innerText = data.oldName ? "おかえりなさい！入力を補助しました。" : "初めまして！お名前を入力してください。";
-            } catch (e) {
-                document.getElementById('userName').value = defaultName;
-                document.getElementById('loading').innerText = "準備ができました。";
-            }
-
-            // 2. 送信処理 (POST)
-            document.getElementById('reservationForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const submitBtn = e.target.querySelector('button[type="submit"]');
-                submitBtn.disabled = true;
-                submitBtn.innerText = "送信中...";
-
-                const postData = {
-                    userId: userId,
-                    userName: document.getElementById('userName').value,
-                    reservationDate: document.getElementById('reservationDate').value,
-                    menu: document.getElementById('menu').value
-                };
-
+                // GASから前回値を読み込む (GET)
+                document.getElementById('loading').innerText = "前回の情報を確認中...";
                 try {
-                    await fetch(GAS_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'text/plain'
-                        },
-                        body: JSON.stringify(postData)
-                    });
-                } catch (error) {
-                    console.error("Fetch error (CORS is often expected but data is sent):", error);
-                }
+                    const response = await fetch(`${GAS_URL}?userId=${currentUserId}`);
+                    const data = await response.json();
 
-                alert('予約が完了しました！');
-                if (liff.isInClient()) {
-                    liff.closeWindow(); // LINEアプリ内なら閉じる
-                } else {
-                    submitBtn.disabled = false;
-                    submitBtn.innerText = "予約完了（LINEアプリで開いてください）";
+                    document.getElementById('userName').value = data.oldName || defaultName;
+                    document.getElementById('loading').innerText = data.oldName ? "おかえりなさい！入力を補助しました。" : "初めまして！お名前を入力してください。";
+                } catch (e) {
+                    document.getElementById('userName').value = defaultName;
+                    document.getElementById('loading').innerText = "準備ができました。";
                 }
-            });
+            } catch (e) {
+                console.error("Profile error:", e);
+                document.getElementById('loading').innerText = "プロフィールの取得に失敗しました。";
+            }
         }
         main();
     </script>
