@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>美容室予約フォーム</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #00b900;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #loading {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>予約フォーム</h2>
+    <div id="loading">LINEログイン中...</div>
+
+    <form id="reservationForm">
+        <div class="form-group">
+            <label>お名前</label>
+            <input type="text" id="userName" placeholder="お名前を入力" required>
+        </div>
+        <div class="form-group">
+            <label>ご希望日時</label>
+            <input type="datetime-local" id="reservationDate" required>
+        </div>
+        <div class="form-group">
+            <label>メニュー</label>
+            <select id="menu">
+                <option value="カット">カット</option>
+                <option value="カット＋カラー">カット＋カラー</option>
+                <option value="髪質改善トリートメント">髪質改善トリートメント</option>
+            </select>
+        </div>
+        <button type="submit">予約を確定する</button>
+    </form>
+
+    <script>
+        const GAS_URL = "ここにStep 2で発行したGASのURLを入れる";
+        const LIFF_ID = "ここにStep 1で発行したLIFF IDを入れる";
+
+        async function main() {
+            await liff.init({ liffId: LIFF_ID });
+
+            if (!liff.isLoggedIn()) {
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            const userId = profile.userId;
+            const defaultName = profile.displayName;
+
+            // 1. GASから前回値を読み込む (GET)
+            document.getElementById('loading').innerText = "前回の情報を確認中...";
+            try {
+                const response = await fetch(`${GAS_URL}?userId=${userId}`);
+                const data = await response.json();
+
+                // 前回の名前があればそれを、なければLINEの登録名を表示
+                document.getElementById('userName').value = data.oldName || defaultName;
+                document.getElementById('loading').innerText = data.oldName ? "おかえりなさい！入力を補助しました。" : "初めまして！お名前を入力してください。";
+            } catch (e) {
+                document.getElementById('userName').value = defaultName;
+                document.getElementById('loading').innerText = "準備ができました。";
+            }
+
+            // 2. 送信処理 (POST)
+            document.getElementById('reservationForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const postData = {
+                    userId: userId,
+                    userName: document.getElementById('userName').value,
+                    reservationDate: document.getElementById('reservationDate').value,
+                    menu: document.getElementById('menu').value
+                };
+
+                await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(postData)
+                });
+
+                alert('予約が完了しました！');
+                liff.closeWindow(); // 完了後にLINE画面を閉じる
+            });
+        }
+        main();
+    </script>
+</body>
+
+</html>
