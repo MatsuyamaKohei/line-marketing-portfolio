@@ -49,8 +49,49 @@
             margin-bottom: 10px;
         }
 
-        /* 確認モーダル */
-        #confirmModal {
+        /* 既存予約カード */
+        #existingView {
+            background: #f0fff0;
+            border: 1px solid #00b900;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        #existingView h3 {
+            margin: 0 0 12px;
+            font-size: 1em;
+            color: #00b900;
+        }
+
+        #existingView dl {
+            margin: 0 0 16px;
+        }
+
+        #existingView dt {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        #existingView dd {
+            margin: 2px 0 0;
+            font-weight: bold;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-buttons button {
+            flex: 1;
+            padding: 12px;
+            font-size: 14px;
+        }
+
+        /* モーダル共通 */
+        .modal {
             display: none;
             position: fixed;
             inset: 0;
@@ -60,7 +101,7 @@
             justify-content: center;
         }
 
-        #confirmModal.active {
+        .modal.active {
             display: flex;
         }
 
@@ -76,6 +117,12 @@
             margin: 0 0 16px;
             font-size: 1.1em;
             text-align: center;
+        }
+
+        .modal-box p {
+            text-align: center;
+            color: #666;
+            margin: 0 0 20px;
         }
 
         .modal-box dl {
@@ -104,8 +151,12 @@
             font-size: 15px;
         }
 
-        #cancelBtn {
+        .btn-gray {
             background: #ccc;
+        }
+
+        .btn-danger {
+            background: #ff4444;
         }
     </style>
 </head>
@@ -114,7 +165,25 @@
     <h2>予約フォーム</h2>
     <div id="loading">LINEログイン中...</div>
 
-    <form id="reservationForm">
+    <!-- 既存予約表示 -->
+    <div id="existingView" style="display:none">
+        <h3>現在のご予約</h3>
+        <dl>
+            <dt>お名前</dt>
+            <dd id="existName"></dd>
+            <dt>ご希望日時</dt>
+            <dd id="existDate"></dd>
+            <dt>メニュー</dt>
+            <dd id="existMenu"></dd>
+        </dl>
+        <div class="action-buttons">
+            <button id="editBtn" type="button">変更する</button>
+            <button id="cancelReservationBtn" type="button" class="btn-danger">キャンセルする</button>
+        </div>
+    </div>
+
+    <!-- 予約フォーム -->
+    <form id="reservationForm" style="display:none">
         <div class="form-group">
             <label>お名前</label>
             <input type="text" id="userName" placeholder="お名前を入力" required>
@@ -131,13 +200,13 @@
                 <option value="髪質改善トリートメント">髪質改善トリートメント</option>
             </select>
         </div>
-        <button type="submit">予約を確定する</button>
+        <button type="submit" id="submitBtn">予約を確定する</button>
     </form>
 
     <!-- 確認モーダル -->
-    <div id="confirmModal">
+    <div id="confirmModal" class="modal">
         <div class="modal-box">
-            <h3>予約内容の確認</h3>
+            <h3 id="confirmTitle">予約内容の確認</h3>
             <dl>
                 <dt>お名前</dt>
                 <dd id="confirmName"></dd>
@@ -147,80 +216,169 @@
                 <dd id="confirmMenu"></dd>
             </dl>
             <div class="modal-buttons">
-                <button id="cancelBtn" type="button">戻る</button>
-                <button id="confirmBtn" type="button">この内容で予約する</button>
+                <button id="confirmBackBtn" type="button" class="btn-gray">戻る</button>
+                <button id="confirmBtn" type="button">この内容で確定する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- キャンセル確認モーダル -->
+    <div id="cancelModal" class="modal">
+        <div class="modal-box">
+            <h3>予約をキャンセルしますか？</h3>
+            <p>この操作は元に戻せません。</p>
+            <div class="modal-buttons">
+                <button id="cancelModalBackBtn" type="button" class="btn-gray">戻る</button>
+                <button id="cancelModalConfirmBtn" type="button" class="btn-danger">キャンセルする</button>
             </div>
         </div>
     </div>
 
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbwdxZeL60EgvcFYkS68Lt4PP8p9ejv0l-MR842D2Q5IOj3r-OHWV5_7nWwUw5F1lcBoJw/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbxqdS2KfwpL8PuqlbRaPPgyrh7FNAPtLPpMDZw-O2UIa9UdDiH0JdtsyM_BwjrJ2PSeVg/exec";
         const LIFF_ID = "2009216134-x9TsRzm8";
 
         let currentUserId = null;
+        let formMode = 'new'; // 'new' | 'edit'
+        let currentReservation = null; // { id, userName, reservationDate, menu }
 
-        const modal = document.getElementById('confirmModal');
+        const confirmModal = document.getElementById('confirmModal');
+        const cancelModal = document.getElementById('cancelModal');
 
-        // 日時を読みやすい形式に変換
         function formatDate(value) {
             if (!value) return "";
             const d = new Date(value);
             return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
         }
 
-        // submitボタンで確認モーダルを表示
+        function showExistingView(reservation) {
+            currentReservation = reservation;
+            document.getElementById('existName').innerText = reservation.userName;
+            document.getElementById('existDate').innerText = formatDate(reservation.reservationDate);
+            document.getElementById('existMenu').innerText = reservation.menu;
+            document.getElementById('existingView').style.display = 'block';
+            document.getElementById('reservationForm').style.display = 'none';
+        }
+
+        function showForm(reservation, mode) {
+            formMode = mode;
+            if (mode === 'edit') {
+                currentReservation = reservation;
+                document.getElementById('userName').value = reservation.userName;
+                document.getElementById('reservationDate').value = reservation.reservationDate;
+                document.getElementById('menu').value = reservation.menu;
+                document.getElementById('submitBtn').innerText = '変更を確定する';
+                document.getElementById('confirmTitle').innerText = '変更内容の確認';
+            } else {
+                document.getElementById('userName').value = reservation.defaultName || '';
+                document.getElementById('reservationDate').value = '';
+                document.getElementById('submitBtn').innerText = '予約を確定する';
+                document.getElementById('confirmTitle').innerText = '予約内容の確認';
+            }
+            document.getElementById('existingView').style.display = 'none';
+            document.getElementById('reservationForm').style.display = 'block';
+        }
+
+        // フォームsubmit → 確認モーダル表示
         document.getElementById('reservationForm').addEventListener('submit', (e) => {
             e.preventDefault();
-
             if (!currentUserId) {
                 alert('LINEログインが完了していません。ページを再読み込みしてください。');
                 return;
             }
-
             document.getElementById('confirmName').innerText = document.getElementById('userName').value;
             document.getElementById('confirmDate').innerText = formatDate(document.getElementById('reservationDate').value);
             document.getElementById('confirmMenu').innerText = document.getElementById('menu').value;
-            modal.classList.add('active');
+            confirmModal.classList.add('active');
         });
 
-        // 戻るボタン
-        document.getElementById('cancelBtn').addEventListener('click', () => {
-            modal.classList.remove('active');
+        // 確認モーダル「戻る」
+        document.getElementById('confirmBackBtn').addEventListener('click', () => {
+            confirmModal.classList.remove('active');
         });
 
-        // 確定ボタン（実際の送信処理）
+        // 確認モーダル「確定する」（新規 or 変更）
         document.getElementById('confirmBtn').addEventListener('click', async () => {
-            modal.classList.remove('active');
-
-            const submitBtn = document.querySelector('button[type="submit"]');
+            confirmModal.classList.remove('active');
+            const submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
-            submitBtn.innerText = "送信中...";
+            submitBtn.innerText = '送信中...';
 
             const postData = {
+                action: formMode === 'edit' ? 'update' : 'new',
                 userId: currentUserId,
                 userName: document.getElementById('userName').value,
                 reservationDate: document.getElementById('reservationDate').value,
-                menu: document.getElementById('menu').value
+                menu: document.getElementById('menu').value,
+                reservationId: currentReservation ? currentReservation.id : null
             };
 
             try {
                 await fetch(GAS_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    },
+                    headers: { 'Content-Type': 'text/plain' },
                     body: JSON.stringify(postData)
                 });
+                alert(formMode === 'edit' ? '予約を変更しました！' : '予約が完了しました！');
             } catch (error) {
-                console.error("Fetch error:", error);
+                console.error('Fetch error:', error);
+                alert('エラーが発生しました。もう一度お試しください。');
+                submitBtn.disabled = false;
+                submitBtn.innerText = formMode === 'edit' ? '変更を確定する' : '予約を確定する';
+                return;
             }
 
-            alert('予約が完了しました！');
             if (liff.isInClient()) {
                 liff.closeWindow();
             } else {
                 submitBtn.disabled = false;
-                submitBtn.innerText = "予約完了（LINEアプリで開いてください）";
+                submitBtn.innerText = '完了（LINEアプリで開いてください）';
+            }
+        });
+
+        // 「変更する」ボタン
+        document.getElementById('editBtn').addEventListener('click', () => {
+            showForm(currentReservation, 'edit');
+        });
+
+        // 「キャンセルする」ボタン
+        document.getElementById('cancelReservationBtn').addEventListener('click', () => {
+            cancelModal.classList.add('active');
+        });
+
+        // キャンセルモーダル「戻る」
+        document.getElementById('cancelModalBackBtn').addEventListener('click', () => {
+            cancelModal.classList.remove('active');
+        });
+
+        // キャンセルモーダル「キャンセルする」
+        document.getElementById('cancelModalConfirmBtn').addEventListener('click', async () => {
+            cancelModal.classList.remove('active');
+            const btn = document.getElementById('cancelModalConfirmBtn');
+            btn.disabled = true;
+
+            try {
+                await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        action: 'cancel',
+                        userId: currentUserId,
+                        reservationId: currentReservation.id
+                    })
+                });
+                alert('予約をキャンセルしました。');
+            } catch (error) {
+                console.error('Fetch error:', error);
+                alert('エラーが発生しました。もう一度お試しください。');
+                btn.disabled = false;
+                return;
+            }
+
+            if (liff.isInClient()) {
+                liff.closeWindow();
+            } else {
+                window.location.reload();
             }
         });
 
@@ -228,8 +386,8 @@
             try {
                 await liff.init({ liffId: LIFF_ID });
             } catch (e) {
-                console.error("LIFF init error:", e);
-                document.getElementById('loading').innerText = "初期化に失敗しました。ページを再読み込みしてください。";
+                console.error('LIFF init error:', e);
+                document.getElementById('loading').innerText = '初期化に失敗しました。ページを再読み込みしてください。';
                 return;
             }
 
@@ -243,23 +401,33 @@
                 currentUserId = profile.userId;
                 const defaultName = profile.displayName;
 
-                // GASから前回値を読み込む (GET)
-                document.getElementById('loading').innerText = "前回の情報を確認中...";
+                document.getElementById('loading').innerText = '予約情報を確認中...';
+
                 try {
                     const response = await fetch(`${GAS_URL}?userId=${currentUserId}`);
                     const data = await response.json();
 
-                    document.getElementById('userName').value = data.oldName || defaultName;
-                    document.getElementById('loading').innerText = data.oldName ? "おかえりなさい！入力を補助しました。" : "初めまして！お名前を入力してください。";
+                    if (data.reservation) {
+                        // 既存の有効予約あり
+                        showExistingView(data.reservation);
+                        document.getElementById('loading').innerText = '';
+                    } else {
+                        // 新規
+                        showForm({ defaultName: data.oldName || defaultName }, 'new');
+                        document.getElementById('loading').innerText = data.oldName
+                            ? 'おかえりなさい！入力を補助しました。'
+                            : '初めまして！お名前を入力してください。';
+                    }
                 } catch (e) {
-                    document.getElementById('userName').value = defaultName;
-                    document.getElementById('loading').innerText = "準備ができました。";
+                    showForm({ defaultName }, 'new');
+                    document.getElementById('loading').innerText = '準備ができました。';
                 }
             } catch (e) {
-                console.error("Profile error:", e);
-                document.getElementById('loading').innerText = "プロフィールの取得に失敗しました。";
+                console.error('Profile error:', e);
+                document.getElementById('loading').innerText = 'プロフィールの取得に失敗しました。';
             }
         }
+
         main();
     </script>
 </body>
