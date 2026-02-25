@@ -283,6 +283,13 @@
         const cancelModal = document.getElementById('cancelModal');
         const sendingOverlay = document.getElementById('sendingOverlay');
 
+        const MENU_MAP = {
+            '1': 'カット',
+            '2': 'カット＋カラー',
+            '3': '髪質改善トリートメント'
+        };
+        const urlMenuParam = new URLSearchParams(window.location.search).get('menu');
+
         function showSending() { sendingOverlay.classList.add('active'); }
         function hideSending() { sendingOverlay.classList.remove('active'); }
 
@@ -313,6 +320,9 @@
             } else {
                 document.getElementById('userName').value = reservation.defaultName || '';
                 document.getElementById('reservationDate').value = '';
+                if (urlMenuParam && MENU_MAP[urlMenuParam]) {
+                    document.getElementById('menu').value = MENU_MAP[urlMenuParam];
+                }
                 document.getElementById('submitBtn').innerText = '予約を確定する';
                 document.getElementById('confirmTitle').innerText = '予約内容の確認';
             }
