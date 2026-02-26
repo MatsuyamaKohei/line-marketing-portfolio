@@ -193,8 +193,9 @@
 
         .cal-grid {
             display: grid;
-            grid-template-columns: 46px repeat(7, minmax(40px, 1fr));
-            min-width: 326px;
+            grid-template-columns: 46px repeat(7, 40px);
+            width: max-content;
+            min-width: 100%;
         }
 
         .cal-time-header {
