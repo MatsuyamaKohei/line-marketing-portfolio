@@ -79,6 +79,24 @@ function doGet(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
 
+    // スロット一覧（カレンダー表示用）
+    if (e.parameter.type === 'slots') {
+      const bookedSlots = [];
+      if (sheet) {
+        const now = new Date();
+        const allData = sheet.getDataRange().getValues();
+        for (let i = 1; i < allData.length; i++) {
+          if (allData[i][7] !== '予約済') continue;
+          const rawDate = allData[i][5];
+          const d = rawDate instanceof Date ? rawDate : new Date(rawDate);
+          if (d > now) {
+            bookedSlots.push(Utilities.formatDate(d, 'JST', "yyyy-MM-dd'T'HH:mm"));
+          }
+        }
+      }
+      return okResponse({ bookedSlots });
+    }
+
     if (!sheet || !userId) {
       return okResponse({ oldName: null, reservation: null });
     }

@@ -159,6 +159,129 @@
             background: #ff4444;
         }
 
+        /* カレンダーナビ */
+        #calendarNav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        #calendarNav button {
+            width: auto;
+            padding: 6px 12px;
+            font-size: 13px;
+            background: #eee;
+            color: #333;
+        }
+
+        #calendarNav button:disabled {
+            opacity: 0.3;
+            cursor: default;
+        }
+
+        #calendarRange {
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        #calendarWrapper {
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .cal-grid {
+            display: grid;
+            grid-template-columns: 46px repeat(7, minmax(40px, 1fr));
+            min-width: 326px;
+        }
+
+        .cal-time-header {
+            background: #f5f5f5;
+            border-bottom: 2px solid #ddd;
+            border-right: 1px solid #eee;
+        }
+
+        .cal-header {
+            background: #f5f5f5;
+            text-align: center;
+            padding: 5px 2px;
+            font-size: 0.72em;
+            border-bottom: 2px solid #ddd;
+            border-right: 1px solid #eee;
+            line-height: 1.4;
+        }
+
+        .cal-header.cal-today {
+            background: #e6ffe6;
+            color: #00b900;
+            font-weight: bold;
+        }
+
+        .cal-header.cal-sunday {
+            color: #e53935;
+        }
+
+        .cal-header.cal-saturday {
+            color: #1e88e5;
+        }
+
+        .cal-time-label {
+            font-size: 0.62em;
+            color: #aaa;
+            text-align: right;
+            padding: 0 4px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            border-bottom: 1px solid #f0f0f0;
+            border-right: 1px solid #eee;
+            background: #fafafa;
+            height: 36px;
+            box-sizing: border-box;
+        }
+
+        .cal-slot {
+            height: 36px;
+            border-bottom: 1px solid #f0f0f0;
+            border-right: 1px solid #eee;
+            box-sizing: border-box;
+        }
+
+        .cal-slot.available {
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .cal-slot.available:active {
+            background: #e6ffe6;
+        }
+
+        .cal-slot.unavailable {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        .cal-slot.selected {
+            background: #00b900;
+        }
+
+        #selectedSlotDisplay {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #00b900;
+            font-weight: bold;
+            min-height: 20px;
+        }
+
+        #calendarLoadingMsg {
+            padding: 16px;
+            text-align: center;
+            color: #888;
+            font-size: 0.9em;
+        }
+
         /* 送信中オーバーレイ */
         #sendingOverlay {
             display: none;
@@ -187,7 +310,9 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
@@ -221,7 +346,16 @@
         </div>
         <div class="form-group">
             <label>ご希望日時</label>
-            <input type="datetime-local" id="reservationDate" required>
+            <div id="calendarNav">
+                <button type="button" id="prevWeek">◀ 前の週</button>
+                <span id="calendarRange"></span>
+                <button type="button" id="nextWeek">次の週 ▶</button>
+            </div>
+            <div id="calendarWrapper">
+                <div id="calendarLoadingMsg">読み込み中...</div>
+                <div id="calendar"></div>
+            </div>
+            <div id="selectedSlotDisplay"></div>
         </div>
         <div class="form-group">
             <label>メニュー</label>
@@ -272,7 +406,7 @@
     </div>
 
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbxqdS2KfwpL8PuqlbRaPPgyrh7FNAPtLPpMDZw-O2UIa9UdDiH0JdtsyM_BwjrJ2PSeVg/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbx2EeAjM6kcbtjgq4mA4d-IxUifkucKf0XNIuJVDyh_nRYgNs_6_P5xNGx6PWf2Km5dJw/exec";
         const LIFF_ID = "2009216134-x9TsRzm8";
 
         let currentUserId = null;
@@ -292,6 +426,122 @@
 
         function showSending() { sendingOverlay.classList.add('active'); }
         function hideSending() { sendingOverlay.classList.remove('active'); }
+
+        // === カレンダー ===
+        const OPEN_HOUR = 10;   // 営業開始
+        const CLOSE_HOUR = 19;  // 営業終了（最終スロット 18:30）
+        const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+        let weekOffset = 0;
+        let selectedSlot = null;
+        let bookedSlotsCache = null;
+
+        function getTimeSlots() {
+            const slots = [];
+            for (let h = OPEN_HOUR; h < CLOSE_HOUR; h++) {
+                slots.push(`${String(h).padStart(2, '0')}:00`);
+                slots.push(`${String(h).padStart(2, '0')}:30`);
+            }
+            return slots;
+        }
+
+        async function initCalendar() {
+            document.getElementById('calendarLoadingMsg').style.display = 'block';
+            document.getElementById('calendar').innerHTML = '';
+            if (!bookedSlotsCache) {
+                try {
+                    const res = await fetch(`${GAS_URL}?type=slots`);
+                    const data = await res.json();
+                    bookedSlotsCache = new Set(data.bookedSlots || []);
+                } catch (e) {
+                    bookedSlotsCache = new Set();
+                }
+            }
+            document.getElementById('calendarLoadingMsg').style.display = 'none';
+            renderCalendar();
+        }
+
+        function renderCalendar() {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const now = new Date();
+            const weekStart = new Date(today);
+            weekStart.setDate(weekStart.getDate() + weekOffset * 7);
+            const days = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(weekStart);
+                d.setDate(d.getDate() + i);
+                return d;
+            });
+
+            // ナビ更新
+            const first = days[0], last = days[6];
+            document.getElementById('calendarRange').textContent =
+                `${first.getMonth() + 1}/${first.getDate()} 〜 ${last.getMonth() + 1}/${last.getDate()}`;
+            document.getElementById('prevWeek').disabled = weekOffset <= 0;
+            document.getElementById('nextWeek').disabled = weekOffset >= 3;
+
+            const timeSlots = getTimeSlots();
+            let html = '<div class="cal-grid">';
+
+            // ヘッダー行
+            html += '<div class="cal-time-header"></div>';
+            days.forEach(d => {
+                const isToday = d.getTime() === today.getTime();
+                const idx = d.getDay();
+                let cls = 'cal-header';
+                if (idx === 0) cls += ' cal-sunday';
+                if (idx === 6) cls += ' cal-saturday';
+                if (isToday) cls += ' cal-today';
+                html += `<div class="${cls}"><div>${DAY_NAMES[idx]}</div><div>${d.getMonth() + 1}/${d.getDate()}</div></div>`;
+            });
+
+            // 時間スロット行
+            timeSlots.forEach(time => {
+                html += `<div class="cal-time-label">${time}</div>`;
+                days.forEach(d => {
+                    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    const dt = `${ymd}T${time}`;
+                    const isPast = new Date(dt) <= now;
+                    const isBooked = bookedSlotsCache && bookedSlotsCache.has(dt);
+                    const isSelected = selectedSlot === dt;
+                    let cls = 'cal-slot';
+                    if (isSelected) cls += ' selected';
+                    else if (isPast || isBooked) cls += ' unavailable';
+                    else cls += ' available';
+                    html += `<div class="${cls}"${!isPast && !isBooked ? ` data-dt="${dt}"` : ''}></div>`;
+                });
+            });
+
+            html += '</div>';
+            document.getElementById('calendar').innerHTML = html;
+
+            // クリックイベント
+            document.querySelectorAll('#calendar .cal-slot.available').forEach(el => {
+                el.addEventListener('click', () => {
+                    selectedSlot = el.dataset.dt;
+                    updateSelectedDisplay();
+                    document.querySelectorAll('#calendar .cal-slot').forEach(s => {
+                        s.classList.remove('selected');
+                        if (s.classList.contains('available') || s === el) {
+                            s.classList.add(s === el ? 'selected' : 'available');
+                        }
+                    });
+                    el.classList.remove('available');
+                    el.classList.add('selected');
+                });
+            });
+        }
+
+        function updateSelectedDisplay() {
+            const el = document.getElementById('selectedSlotDisplay');
+            el.textContent = selectedSlot ? `選択中: ${formatDate(selectedSlot)}` : '';
+        }
+
+        document.getElementById('prevWeek').addEventListener('click', () => {
+            if (weekOffset > 0) { weekOffset--; renderCalendar(); }
+        });
+        document.getElementById('nextWeek').addEventListener('click', () => {
+            if (weekOffset < 3) { weekOffset++; renderCalendar(); }
+        });
 
         function formatDate(value) {
             if (!value) return "";
@@ -313,19 +563,28 @@
             if (mode === 'edit') {
                 currentReservation = reservation;
                 document.getElementById('userName').value = reservation.userName;
-                document.getElementById('reservationDate').value = reservation.reservationDate;
                 document.getElementById('menu').value = reservation.menu;
                 document.getElementById('submitBtn').innerText = '変更を確定する';
                 document.getElementById('confirmTitle').innerText = '変更内容の確認';
+                // 予約済み日時の週にカレンダーを移動してスロットを選択
+                const resDay = new Date(reservation.reservationDate);
+                resDay.setHours(0, 0, 0, 0);
+                const todayDay = new Date();
+                todayDay.setHours(0, 0, 0, 0);
+                weekOffset = Math.max(0, Math.floor((resDay - todayDay) / (1000 * 60 * 60 * 24 * 7)));
+                selectedSlot = reservation.reservationDate;
             } else {
                 document.getElementById('userName').value = reservation.defaultName || '';
-                document.getElementById('reservationDate').value = '';
                 if (urlMenuParam && MENU_MAP[urlMenuParam]) {
                     document.getElementById('menu').value = MENU_MAP[urlMenuParam];
                 }
                 document.getElementById('submitBtn').innerText = '予約を確定する';
                 document.getElementById('confirmTitle').innerText = '予約内容の確認';
+                weekOffset = 0;
+                selectedSlot = null;
             }
+            updateSelectedDisplay();
+            initCalendar();
             document.getElementById('existingView').style.display = 'none';
             document.getElementById('reservationForm').style.display = 'block';
         }
@@ -337,8 +596,12 @@
                 alert('LINEログインが完了していません。ページを再読み込みしてください。');
                 return;
             }
+            if (!selectedSlot) {
+                alert('日時を選択してください。');
+                return;
+            }
             document.getElementById('confirmName').innerText = document.getElementById('userName').value;
-            document.getElementById('confirmDate').innerText = formatDate(document.getElementById('reservationDate').value);
+            document.getElementById('confirmDate').innerText = formatDate(selectedSlot);
             document.getElementById('confirmMenu').innerText = document.getElementById('menu').value;
             confirmModal.classList.add('active');
         });
@@ -359,7 +622,7 @@
                 action: formMode === 'edit' ? 'update' : 'new',
                 userId: currentUserId,
                 userName: document.getElementById('userName').value,
-                reservationDate: document.getElementById('reservationDate').value,
+                reservationDate: selectedSlot,
                 menu: document.getElementById('menu').value,
                 reservationId: currentReservation ? currentReservation.id : null
             };
